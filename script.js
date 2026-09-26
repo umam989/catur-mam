@@ -538,21 +538,25 @@ function aiMove() {
         let chosen;
 
         if (difficulty === 'easy') {
-            // Easy: 70% random, 30% capture
-            if (Math.random() < 0.7) {
+            // ===== MUDAH =====
+            // 85% gerak random (kadang blunder, kadang gak makan bidak)
+            // 15% baru mikir dikit (biar gak keliatan bego banget)
+            if (Math.random() < 0.85) {
                 chosen = allMoves[Math.floor(Math.random() * allMoves.length)];
             } else {
-                chosen = pickByScore(allMoves, false);
+                // Cuma prioritaskan capture gratis (target gak dibela)
+                chosen = pickEasyMove(allMoves);
             }
         } else if (difficulty === 'medium') {
-            // Medium: 40% random, 60% heuristik 1-ply
-            if (Math.random() < 0.4) {
+            // ===== SEDANG =====
+            // 45% random, 55% heuristik
+            if (Math.random() < 0.45) {
                 chosen = allMoves[Math.floor(Math.random() * allMoves.length)];
             } else {
                 chosen = pickByScore(allMoves, true);
             }
         } else {
-            // Hard: full heuristik + lihat 2 langkah (hindari kehilangan bidak)
+            // ===== SULIT =====
             chosen = pickByScore(allMoves, true, true);
         }
 
@@ -568,6 +572,41 @@ function aiMove() {
         thinkingEl.classList.add('hidden');
         updateBoardUI();
     }
+}
+
+// ===== MUDAH: cuma makan bidak yang GAK dibela =====
+function pickEasyMove(moves) {
+    const safeCaptures = [];
+
+    for (const mv of moves) {
+        const target = board[mv.to.r][mv.to.c];
+        if (!target) continue; // skip kalau bukan capture
+
+        // Simulasi: kalau kita makan, apakah white bisa makan balik?
+        const saved = board.map(row => [...row]);
+        const savedEP = enPassantTarget;
+
+        const moving = board[mv.from.r][mv.from.c];
+        board[mv.to.r][mv.to.c] = moving;
+        board[mv.from.r][mv.from.c] = null;
+
+        const defended = isSquareAttacked(mv.to.r, mv.to.c, 'w');
+
+        for (let i = 0; i < 8; i++)
+            for (let j = 0; j < 8; j++)
+                board[i][j] = saved[i][j];
+        enPassantTarget = savedEP;
+
+        if (!defended) safeCaptures.push(mv);
+    }
+
+    // Kalau ada capture aman, ambil random dari situ
+    if (safeCaptures.length > 0) {
+        return safeCaptures[Math.floor(Math.random() * safeCaptures.length)];
+    }
+
+    // Kalau gak ada, gerak random biasa (blunder)
+    return moves[Math.floor(Math.random() * moves.length)];
 }
 
 // ===== PILIH MOVE TERBAIK BERDASARKAN SKOR =====
