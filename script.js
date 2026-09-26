@@ -509,8 +509,19 @@ function isKingInCheck(color, b) {
 
 /* =========================================================
    CHESS AI FINAL - PART 4/4
+   AI Heuristik (bukan minimax) - cepat & akurat
    ========================================================= */
 
+const PIECE_VALUES = { P:100, N:320, B:330, R:500, Q:900, K:20000 };
+
+// Nilai posisi: bidak di tengah lebih bagus
+function centerBonus(r, c) {
+    const dr = Math.min(r, 7 - r);
+    const dc = Math.min(c, 7 - c);
+    return (dr + dc) * 2;
+}
+
+// ===== AI MOVE =====
 function aiMove() {
     aiThinking = false;
     thinkingEl.classList.add('hidden');
@@ -525,21 +536,27 @@ function aiMove() {
         }
 
         let chosen;
-        const rand = Math.random();
 
         if (difficulty === 'easy') {
-            chosen = allMoves[Math.floor(Math.random() * allMoves.length)];
+            // Easy: 70% random, 30% capture
+            if (Math.random() < 0.7) {
+                chosen = allMoves[Math.floor(Math.random() * allMoves.length)];
+            } else {
+                chosen = pickByScore(allMoves, false);
+            }
         } else if (difficulty === 'medium') {
-            chosen = rand < 0.5
-                ? getBestMove(allMoves, 1)
-                : allMoves[Math.floor(Math.random() * allMoves.length)];
+            // Medium: 40% random, 60% heuristik 1-ply
+            if (Math.random() < 0.4) {
+                chosen = allMoves[Math.floor(Math.random() * allMoves.length)];
+            } else {
+                chosen = pickByScore(allMoves, true);
+            }
         } else {
-            chosen = getBestMove(allMoves, 2);
+            // Hard: full heuristik + lihat 2 langkah (hindari kehilangan bidak)
+            chosen = pickByScore(allMoves, true, true);
         }
 
-        if (!chosen) {
-            chosen = allMoves[Math.floor(Math.random() * allMoves.length)];
-        }
+        if (!chosen) chosen = allMoves[0];
 
         executeMove(chosen.from, chosen.to, chosen.info);
 
@@ -553,6 +570,138 @@ function aiMove() {
     }
 }
 
+// ===== PILIH MOVE TERBAIK BERDASARKAN SKOR =====
+function pickByScore(moves, useHeuristic, lookAhead = false) {
+    let best = moves[0];
+    let bestScore = -Infinity;
+
+    for (const mv of moves) {
+        let score = 0;
+
+        const movingPiece = board[mv.from.r][mv.from.c];
+        const targetPiece = board[mv.to.r][mv.to.c];
+
+        // 1. Nilai capture (paling penting)
+        if (targetPiece) {
+            score += PIECE_VALUES[targetPiece[1]] * 10;
+        }
+
+        // En passant capture
+        if (mv.info.isEnPassant) {
+            score += PIECE_VALUES['P'] * 10;
+        }
+
+        // 2. Promosi = bagus banget
+        if (movingPiece[1] === 'P' && (mv.to.r === 0 || mv.to.r === 7)) {
+            score += PIECE_VALUES['Q'] * 15;
+        }
+
+        // 3. Castling = aman
+        if (mv.info.isCastle) {
+            score += 60;
+        }
+
+        // 4. Center control
+        score += centerBonus(mv.to.r, mv.to.c);
+
+        // 5. Maju ke depan (pawn push)
+        if (movingPiece[1] === 'P') {
+            score += (mv.to.r - mv.from.r) * 5;
+        }
+
+        // 6. Heuristik: cek apakah kotak tujuan diserang musuh
+        if (useHeuristic) {
+            // Simulasi move dulu
+            const savedBoard = board.map(row => [...row]);
+            const savedEP = enPassantTarget;
+
+            board[mv.to.r][mv.to.c] = movingPiece;
+            board[mv.from.r][mv.from.c] = null;
+            if (mv.info.isEnPassant) {
+                board[mv.from.r][mv.to.c] = null;
+            }
+            if (movingPiece[1] === 'P' && (mv.to.r === 0 || mv.to.r === 7)) {
+                board[mv.to.r][mv.to.c] = movingPiece[0] + 'Q';
+            }
+
+            const newPiece = board[mv.to.r][mv.to.c];
+
+            // Kalau kotak tujuan diserang lawan, kurangin skor
+            if (isSquareAttacked(mv.to.r, mv.to.c, 'w')) {
+                // Cek apakah masih ada yang bela
+                let defended = false;
+                // Simulasi: apakah setelah white makan, white bisa dimakan balik?
+                // Cukup rough: kalau nilai bidak yang pindah tinggi, hindari
+                score -= PIECE_VALUES[newPiece[1]] * 3;
+            }
+
+            // Bonus kalau move ini bikin white kena skak
+            // Simulasi: cek apakah white king kena skak setelah move ini
+            // (skip - terlalu berat)
+
+            // Restore
+            for (let i = 0; i < 8; i++)
+                for (let j = 0; j < 8; j++)
+                    board[i][j] = savedBoard[i][j];
+            enPassantTarget = savedEP;
+
+            // 7. Look-ahead: cek apa white bisa capture bidak kita setelah move ini
+            if (lookAhead) {
+                const lookScore = evaluatePositionAfterMove(mv);
+                score += lookScore;
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            best = mv;
+        }
+    }
+
+    return best;
+}
+
+// ===== EVALUASI POSISI SETELAH MOVE (untuk hard mode) =====
+function evaluatePositionAfterMove(mv) {
+    const savedBoard = board.map(row => [...row]);
+    const savedEP = enPassantTarget;
+
+    const piece = board[mv.from.r][mv.from.c];
+
+    // Apply move
+    board[mv.to.r][mv.to.c] = piece;
+    board[mv.from.r][mv.from.c] = null;
+    if (mv.info.isEnPassant) board[mv.from.r][mv.to.c] = null;
+    if (piece[1] === 'P' && (mv.to.r === 0 || mv.to.r === 7)) {
+        board[mv.to.r][mv.to.c] = piece[0] + 'Q';
+    }
+
+    let score = 0;
+
+    // Cek semua langkah white: kalau ada yang bisa capture kita dengan untung, kurangin
+    const whiteMoves = getAllMoves('w');
+    let worstLoss = 0;
+    for (const wm of whiteMoves) {
+        const target = board[wm.to.r][wm.to.c];
+        if (target && target[0] === 'b') {
+            const gain = PIECE_VALUES[target[1]] - PIECE_VALUES[board[wm.from.r][wm.from.c][1]] * 0.5;
+            if (gain > worstLoss) worstLoss = gain;
+        }
+    }
+
+    // Kalau setelah move kita bisa kehilangan bidak mahal, kurangin
+    score -= worstLoss * 2;
+
+    // Restore
+    for (let i = 0; i < 8; i++)
+        for (let j = 0; j < 8; j++)
+            board[i][j] = savedBoard[i][j];
+    enPassantTarget = savedEP;
+
+    return score;
+}
+
+// ===== GET ALL MOVES =====
 function getAllMoves(color) {
     const all = [];
     for (let r = 0; r < 8; r++)
@@ -566,161 +715,7 @@ function getAllMoves(color) {
     return all;
 }
 
-const PIECE_VALUES = { P:100, N:320, B:330, R:500, Q:900, K:20000 };
-
-function evaluateBoard() {
-    let score = 0;
-    for (let r = 0; r < 8; r++)
-        for (let c = 0; c < 8; c++) {
-            const p = board[r][c];
-            if (!p) continue;
-            const val = PIECE_VALUES[p[1]];
-            score += p[0] === 'b' ? val : -val;
-        }
-    return score;
-}
-
-function getBestMove(moves, depth) {
-    let best = moves[0];
-    let bestScore = -Infinity;
-    for (const mv of moves) {
-        const saved = board.map(row => [...row]);
-        const savedEP = enPassantTarget;
-        const savedCastle = { ...castlingRights };
-
-        const piece = board[mv.from.r][mv.from.c];
-        if (mv.info.isCastle) {
-            board[mv.to.r][mv.to.c] = piece;
-            board[mv.from.r][mv.from.c] = null;
-            if (mv.info.side === 'K') {
-                board[mv.to.r][5] = board[mv.to.r][7];
-                board[mv.to.r][7] = null;
-            } else {
-                board[mv.to.r][3] = board[mv.to.r][0];
-                board[mv.to.r][0] = null;
-            }
-        } else if (mv.info.isEnPassant) {
-            board[mv.to.r][mv.to.c] = piece;
-            board[mv.from.r][mv.from.c] = null;
-            board[mv.from.r][mv.to.c] = null;
-        } else {
-            board[mv.to.r][mv.to.c] = piece;
-            board[mv.from.r][mv.from.c] = null;
-        }
-        if (piece[1] === 'P' && (mv.to.r === 0 || mv.to.r === 7)) {
-            board[mv.to.r][mv.to.c] = piece[0] + 'Q';
-        }
-
-        const score = minimax(depth - 1, false, -Infinity, Infinity);
-
-        for (let i = 0; i < 8; i++)
-            for (let j = 0; j < 8; j++)
-                board[i][j] = saved[i][j];
-        enPassantTarget = savedEP;
-        castlingRights = savedCastle;
-
-        if (score > bestScore) {
-            bestScore = score;
-            best = mv;
-        }
-    }
-    return best;
-}
-
-function minimax(depth, isMax, alpha, beta) {
-    if (depth === 0) return evaluateBoard();
-
-    const color = isMax ? 'b' : 'w';
-    const moves = getAllMoves(color);
-
-    if (moves.length === 0) {
-        if (findKingInCheck(color)) return isMax ? -99999 : 99999;
-        return 0;
-    }
-
-    if (isMax) {
-        let maxEval = -Infinity;
-        for (const mv of moves) {
-            const saved = board.map(row => [...row]);
-            const savedEP = enPassantTarget;
-            const savedCastle = { ...castlingRights };
-
-            const piece = board[mv.from.r][mv.from.c];
-            if (mv.info.isCastle) {
-                board[mv.to.r][mv.to.c] = piece;
-                board[mv.from.r][mv.from.c] = null;
-                if (mv.info.side === 'K') {
-                    board[mv.to.r][5] = board[mv.to.r][7];
-                    board[mv.to.r][7] = null;
-                } else {
-                    board[mv.to.r][3] = board[mv.to.r][0];
-                    board[mv.to.r][0] = null;
-                }
-            } else if (mv.info.isEnPassant) {
-                board[mv.to.r][mv.to.c] = piece;
-                board[mv.from.r][mv.from.c] = null;
-                board[mv.from.r][mv.to.c] = null;
-            } else {
-                board[mv.to.r][mv.to.c] = piece;
-                board[mv.from.r][mv.from.c] = null;
-            }
-
-            const evalScore = minimax(depth - 1, false, alpha, beta);
-
-            for (let i = 0; i < 8; i++)
-                for (let j = 0; j < 8; j++)
-                    board[i][j] = saved[i][j];
-            enPassantTarget = savedEP;
-            castlingRights = savedCastle;
-
-            maxEval = Math.max(maxEval, evalScore);
-            alpha = Math.max(alpha, evalScore);
-            if (beta <= alpha) break;
-        }
-        return maxEval;
-    } else {
-        let minEval = Infinity;
-        for (const mv of moves) {
-            const saved = board.map(row => [...row]);
-            const savedEP = enPassantTarget;
-            const savedCastle = { ...castlingRights };
-
-            const piece = board[mv.from.r][mv.from.c];
-            if (mv.info.isCastle) {
-                board[mv.to.r][mv.to.c] = piece;
-                board[mv.from.r][mv.from.c] = null;
-                if (mv.info.side === 'K') {
-                    board[mv.to.r][5] = board[mv.to.r][7];
-                    board[mv.to.r][7] = null;
-                } else {
-                    board[mv.to.r][3] = board[mv.to.r][0];
-                    board[mv.to.r][0] = null;
-                }
-            } else if (mv.info.isEnPassant) {
-                board[mv.to.r][mv.to.c] = piece;
-                board[mv.from.r][mv.from.c] = null;
-                board[mv.from.r][mv.to.c] = null;
-            } else {
-                board[mv.to.r][mv.to.c] = piece;
-                board[mv.from.r][mv.from.c] = null;
-            }
-
-            const evalScore = minimax(depth - 1, true, alpha, beta);
-
-            for (let i = 0; i < 8; i++)
-                for (let j = 0; j < 8; j++)
-                    board[i][j] = saved[i][j];
-            enPassantTarget = savedEP;
-            castlingRights = savedCastle;
-
-            minEval = Math.min(minEval, evalScore);
-            beta = Math.min(beta, evalScore);
-            if (beta <= alpha) break;
-        }
-        return minEval;
-    }
-}
-
+// ===== CHECK GAME OVER =====
 function checkGameOver() {
     const color = currentPlayer;
     const moves = getAllMoves(color);
@@ -773,14 +768,6 @@ window.cekState = function() {
     console.log('gameActive:', gameActive);
     console.log('selectedSquare:', selectedSquare);
     console.log('board ada?', board.length === 8);
-    console.log('squareEls ada?', squareEls.length === 8);
-    if (board.length === 8) {
-        const kings = [];
-        for (let r = 0; r < 8; r++)
-            for (let c = 0; c < 8; c++)
-                if (board[r][c] && board[r][c][1] === 'K') kings.push(board[r][c] + '@' + r + ',' + c);
-        console.log('Kings:', kings.join(' | '));
-    }
 };
 
 window.resetPaksa = function() {
