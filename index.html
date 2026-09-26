@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- LOADING -->
+    <div id="loadingScreen" class="screen active">
+        <div class="loader">
+            <div class="chess-logo">♞</div>
+            <h1>CHESS AI</h1>
+            <p>Menyiapkan papan catur...</p>
+
+            <div class="loading-bar">
+                <div id="loadingProgress"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MENU -->
+    <div id="menuScreen" class="screen">
+        <div class="menu-box">
+            <div class="big-knight">♞</div>
+
+            <h1>CHESS AI</h1>
+            <p class="subtitle">Pilih tingkat kesulitan</p>
+
+            <button class="difficulty easy" data-level="easy">
+                <span>🟢</span>
+                <div>
+                    <b>Mudah</b>
+                    <small>Untuk pemula</small>
+                </div>
+            </button>
+
+            <button class="difficulty medium" data-level="medium">
+                <span>🟡</span>
+                <div>
+                    <b>Sedang</b>
+                    <small>AI lebih pintar</small>
+                </div>
+            </button>
+
+            <button class="difficulty hard" data-level="hard">
+                <span>🔴</span>
+                <div>
+                    <b>Sulit</b>
+                    <small>AI bermain serius</small>
+                </div>
+            </button>
+        </div>
+    </div>
+
+    <!-- GAME -->
+    <div id="gameScreen" class="screen">
+
+        <header>
+            <button id="backBtn">←</button>
+
+            <div>
+                <h2>CHESS AI</h2>
+                <span id="difficultyText">Mudah</span>
+            </div>
+
+            <button id="restartBtn">↻</button>
+        </header>
+
+        <main>
+
+            <div class="status">
+                <div id="turnText">Giliran kamu</div>
+                <div id="thinking" class="hidden">AI sedang berpikir...</div>
+            </div>
+
+            <div id="board"></div>
+
+            <div class="players">
+
+                <div class="player">
+                    <div class="avatar">♟</div>
+                    <div>
+                        <b>KOMPUTER</b>
+                        <small>Black</small>
+                    </div>
+                </div>
+
+                <div class="vs">VS</div>
+
+                <div class="player">
+                    <div class="avatar">♙</div>
+                    <div>
+                        <b>KAMU</b>
+                        <small>White</small>
+                    </div>
+                </div>
+
+            </div>
+
+            <button id="newGameBtn" class="new-game">
+                ♟ GAME BARU
+            </button>
+
+        </main>
+
+    </div>
+
+    <!-- RESULT -->
+    <div id="resultPopup" class="popup hidden">
+        <div class="result-box">
+            <div id="resultIcon">♔</div>
+            <h2 id="resultTitle">Game Selesai</h2>
+            <p id="resultMessage"></p>
+
+            <button id="playAgain">Main Lagi</button>
+            <button id="backMenu">Menu Utama</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
